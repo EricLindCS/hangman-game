@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hangman Game</title>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+        }
+        .keypad {
+            display: flex;
+            flex-wrap: wrap;
+            max-width: 300px;
+            margin: 20px auto;
+        }
+        .keypad button {
+            width: 30px;
+            height: 30px;
+            margin: 2px;
+            font-size: 16px;
+            background-color: #3c3c3c;
+            color: #d4d4d4;
+            border: none;
+            cursor: pointer;
+        }
+        .keypad button.used {
+            background-color: gray;
+            color: white;
+        }
+        .keypad button:hover:not(.used) {
+            background-color: #575757;
+        }
+        #output {
+            white-space: pre-wrap;
+            margin-top: 20px;
+        }
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            background-color: #d4d4d4;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            from, to {
+                background-color: transparent;
+            }
+            50% {
+                background-color: #d4d4d4;
+            }
+        }
+        @keyframes hangman-die {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(90deg); }
+        }
+        .hangman-die {
+            animation: hangman-die 2s forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .fade-in {
+            animation: fadeIn 1s forwards;
+        }
+        .fade-out {
+            animation: fadeOut 1s forwards;
+        }
+        #game-over-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            font-size: 2em;
+            text-align: center;
+            padding-top: 20%;
+        }
+    </style>
+</head>
+<body>
+    <div id="hangman-visual">
+        <pre>{{ game_state['hangman_visual'] }}</pre>
+    </div>
+    <div id="word">
+        {% for letter in game_state['word'] %}
+            {% if letter in game_state['used_letters'] %}
+                {{ letter }}
+            {% else %}
+                _
+            {% endif %}
+        {% endfor %}
+    </div>
+    <div id="lives">
+        Lives: {{ game_state['lives'] }}
+    </div>
+    <div class="keypad" id="keypad">
+        {% for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+            <button type="button" id="btn-{{ letter }}" onclick="guessLetter('{{ letter }}')">{{ letter }}</button>
+        {% endfor %}
+    </div>
+    <div id="output">
+        {% for line in game_state['output'] %}
+            <p>{{ line }}</p>
+        {% endfor %}
+        <span class="cursor"></span>
+    </div>
+    <div id="game-over-screen">
+        Game Over<br><br>You Can Ask For A Hint If You Managed To Get This Far :) <br> <br> <span id="nice-try-message"></span>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const gameState = localStorage.getItem('gameState');
+        const gameOverFlag = localStorage.getItem('gameOverFlag');
+        if (gameState) {
+            const state = JSON.parse(gameState);
+            // Restore the game state from localStorage
+            // Update the UI accordingly
+            document.getElementById('output').innerText = state.output.join('\n');
+            document.getElementById('hangman-visual').innerHTML = `<pre>${state.hangman_visual}</pre>`;
+            document.getElementById('word').innerText = state.word.split('').map(letter => state.used_letters.includes(letter) ? letter : '_').join(' ');
+            document.getElementById('lives').innerText = `Lives: ${state.lives}`;
+            state.used_letters.forEach(letter => {
+                const button = document.getElementById(`btn-${letter}`);
+                if (button) {
+                    button.classList.add('used');
+                    button.disabled = true;
+                }
+            });
+            if (state.game_over) {
+                if (gameOverFlag === 'true') {
+                    const niceTryMessage = document.getElementById('nice-try-message');
+                    niceTryMessage.innerText = 'Nice try!';
+                    niceTryMessage.classList.add('fade-in');
+                    setTimeout(() => {
+                        niceTryMessage.classList.remove('fade-in');
+                        niceTryMessage.classList.add('fade-out');
+                    }, 1000);
+                }
+                showGameOverScreen();
+            }
+        }
+    });
+
+    function guessLetter(letter) {
+        fetch('/guess', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `letter=${letter}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateGameState(data.game_state);
+            // Update the UI accordingly
+            document.getElementById('output').innerText = data.game_state.output.join('\n');
+            document.getElementById('hangman-visual').innerHTML = `<pre>${data.game_state.hangman_visual}</pre>`;
+            document.getElementById('word').innerText = data.game_state.word.split('').map(letter => data.game_state.used_letters.includes(letter) ? letter : '_').join(' ');
+            document.getElementById('lives').innerText = `Lives: ${data.game_state.lives}`;
+            const button = document.getElementById(`btn-${letter}`);
+            if (button) {
+                button.classList.add('used');
+                button.disabled = true;
+            }
+            if (data.game_state.game_over) {
+                localStorage.setItem('gameOverFlag', 'true');
+                playGameOverAnimation();
+            }
+        });
+    }
+
+    function updateGameState(state) {
+        localStorage.setItem('gameState', JSON.stringify(state));
+    }
+
+    function playGameOverAnimation() {
+        const hangmanVisual = document.getElementById('hangman-visual');
+        hangmanVisual.classList.add('hangman-die');
+        setTimeout(() => {
+            showGameOverScreen();
+        }, 2000);
+    }
+
+    function showGameOverScreen() {
+        document.getElementById('game-over-screen').style.display = 'block';
+    }
+
+    // Function to reset the game, callable from the browser console
+    function resetGame() {
+        fetch('/reset_game', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            localStorage.removeItem('gameState'); // Clear the game state from localStorage
+            localStorage.removeItem('gameOverFlag'); // Clear the game over flag from localStorage
+            location.reload(); // Reload the page to reflect the reset game state
+        });
+    }
+    </script>
+</body>
+</html>
