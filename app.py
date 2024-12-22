@@ -97,6 +97,7 @@ def guess():
         return jsonify(game_state=session), 200
     elif len(session['word_letters']) == 0:
         session['output'].append("Congratulations! You've guessed the word.")
+        session['output'].append("walnutshrimp.aternos.me")
         return jsonify(game_state=session), 200
     
     return jsonify(game_state=session), 200
